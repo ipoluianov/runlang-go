@@ -1,0 +1,149 @@
+Keywords:
+fn
+return
+if
+while
+end
+else
+
+Conditions:
+==
+<
+>
+<=
+>=
+
+Types:
+bool
+float, double, uint8, uint16, uint32, uint64, bigint, int8, int16, int32, int64
+bytes
+string
+
+fn print str count
+    c = 0
+    while c < 10
+        i = 0
+        while i < count
+            printStr str
+            i = i + 1
+        end
+    end
+    if 5 > 3
+        print "OK"
+    else
+        val = strings.len str
+        bs = strings.utf8bytes str
+        print "False"
+        v = 3
+        v = 3 + 5
+        v = pow 2 1024
+    end
+return
+
+std.strlen str
+print "Hello" 42
+ex.drawLine 0 y 42 y
+
+fn setup p1 p2
+    colorRed = 0xFF0000
+    colorGreen = 0x00FF00
+    threshold = 5.6
+    text = "OK"
+return
+
+fn calcColor value threshold
+    if value < threshold 
+        color = colorGreen
+        text = "OK"
+    else
+        color = colorRed
+        text = "ERROR"
+    end
+return color text
+
+col text = calcColor 34, 22
+
+fn draw
+    drawLine 0, 54, 66, 77
+return
+
+fn pow
+    i = 0
+    while i < 50 
+        v = v * v
+        i = i + 1
+    end
+return
+
+r = r * u
+r = 123
+
+call draw
+
+fn xchgCall function callback
+    callback "888"
+return
+
+xchgCall "set_item" onComplete
+
+fn onComplete parameter|"NODATA" slice|56
+    qwe = "COMPLETE" + parameter
+    setText qwe
+return
+
+fn println args...
+    i = 0
+    size = array.len args
+    while i < size
+        print array.item args i
+    end
+return
+
+b0 = bytes.slice bs 0
+
+http.get = mu_http_get
+res, err = http.get "http://localhost/"
+
+res = 34 * x
+res = res + 54
+
+struct
+    frameType uint8
+    command string
+end
+
+obj = json.parse str
+timestamp = obj.get "timestamp"
+obj.set "processed" as string, 1 as uint8 
+jsonStr = json.toStr obj
+
+fn parseFrame frame
+    frameSize = frame[0]
+    frameType = frame[1]
+    data = frame[2:frameSize]
+    buffer = bytes.make 45
+    buffer = bytes.copy data
+return data
+
+fn sendUDP address:45 data:nil
+    os.sendUDP address data
+return
+
+console.print 42
+str = console.read
+password = console.readPassword
+ssh.login "root", password
+map.set "x" 42
+map.get "x"
+
+struct User
+    id uint8 0 'ID'
+    name string "" 'NAME'
+    password string "" 'PASSWORD'
+end
+
+obj = make User
+obj.id = 0
+obj.name = "qqq"
+obj.password = "www"
+

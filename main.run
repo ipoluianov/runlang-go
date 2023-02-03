@@ -1,0 +1,10 @@
+fn ppp val
+    if (5 > 3)
+        print(val)
+    end
+return
+
+a1 = 2 + 2
+ppp(a1)
+a2 = 55
+ppp a2
