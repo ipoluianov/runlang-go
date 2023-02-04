@@ -3,40 +3,9 @@ package runlang
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
-
-type Line struct {
-	Tp     string
-	Lexems []string
-}
-
-type Context struct {
-	returnToLine int
-	vars         map[string]interface{}
-	stackIfWhile []*Block
-}
-
-func NewContext(returnToLine int) *Context {
-	var c Context
-	c.returnToLine = returnToLine
-	c.vars = make(map[string]interface{})
-	return &c
-}
-
-type Block struct {
-	tp         string
-	beginIndex int
-}
-
-func NewBlock(tp string, beginIndex int) *Block {
-	var c Block
-	c.tp = tp
-	c.beginIndex = beginIndex
-	return &c
-}
 
 type Program struct {
 	currentLine     int
@@ -347,6 +316,7 @@ func (c *Program) fnElse() {
 	for c.currentLine < len(c.lines) && c.lines[c.currentLine].Lexems[0] != "end" {
 		c.currentLine++
 	}
+
 }
 
 func (c *Program) fnSet() {
@@ -413,13 +383,9 @@ func (c *Program) fnSet() {
 }
 
 func (c *Program) set(name string, value interface{}) {
-	c.context.vars[name] = value
+	c.context.set(name, value)
 }
 
 func (c *Program) get(name string) interface{} {
-	iVal, err := strconv.ParseInt(name, 10, 64)
-	if err == nil {
-		return iVal
-	}
-	return c.context.vars[name]
+	return c.context.get(name)
 }
