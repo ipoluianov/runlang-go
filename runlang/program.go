@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ipoluianov/runlang-go/lib"
 )
 
 type Program struct {
@@ -13,20 +15,17 @@ type Program struct {
 	context         *Context
 	functions       map[string]int
 	stack           []*Context
-	parentFunctions map[string]func(args ...interface{})
+	parentFunctions map[string]func(args ...interface{}) ([]interface{}, error)
 }
 
 func NewProgram() *Program {
 	var c Program
 	c.context = NewContext(-1)
 	c.functions = make(map[string]int)
-	c.parentFunctions = make(map[string]func(args ...interface{}))
-	c.parentFunctions["print"] = c.funcPrint
+	c.parentFunctions = make(map[string]func(args ...interface{}) ([]interface{}, error))
+	c.parentFunctions["run.add"] = lib.Add
+	c.parentFunctions["run.print"] = lib.Print
 	return &c
-}
-
-func (c *Program) funcPrint(args ...interface{}) {
-	fmt.Println(">", args)
 }
 
 func (c *Program) Compile(code string) {
@@ -46,14 +45,18 @@ func (c *Program) Compile(code string) {
 	}
 }
 
-func (c *Program) Run() {
+func (c *Program) Run() (err error) {
 	c.currentLine = 0
 	for c.currentLine >= 0 && c.currentLine < len(c.lines) {
-		c.ExecLine()
+		err = c.ExecLine()
+		if err != nil {
+			return
+		}
 	}
+	return
 }
 
-func (c *Program) ExecLine() {
+func (c *Program) ExecLine() (err error) {
 	time.Sleep(100 * time.Millisecond)
 	if len(c.lines[c.currentLine].Lexems) < 1 {
 		c.currentLine++
@@ -61,16 +64,6 @@ func (c *Program) ExecLine() {
 	}
 	l0 := c.lines[c.currentLine].Lexems[0]
 	fmt.Println("ExecLine", c.currentLine, c.lines[c.currentLine].Lexems)
-	_, isFunctionCall := c.functions[l0]
-	if isFunctionCall {
-		c.fnCall(c.lines[c.currentLine].Lexems)
-		return
-	}
-	_, isExpFunctionCall := c.parentFunctions[l0]
-	if isExpFunctionCall {
-		c.fnExtCall(c.lines[c.currentLine].Lexems)
-		return
-	}
 	if l0 == "return" {
 		c.fnReturn()
 		return
@@ -96,25 +89,43 @@ func (c *Program) ExecLine() {
 		return
 	}
 
-	c.fnSet()
+	err = c.fnSet()
+	return
 }
 
-func (c *Program) fnCall(funcCallBody []string) {
+func (c *Program) fnCall(funcCallBody []string) (err error) {
 	functionName := funcCallBody[0]
-	functionLineIndex := c.functions[functionName]
-	functionLineParameters := c.lines[functionLineIndex].Lexems[2:]
-	parameters := c.parseParameters(funcCallBody[1:])
-	ctx := NewContext(c.currentLine + 1)
-	for i := range functionLineParameters {
-		ctx.vars[functionLineParameters[i]] = nil
-		if i < len(parameters) {
-			ctx.vars[functionLineParameters[i]] = parameters[i]
+	_, internalExists := c.functions[functionName]
+	_, externalExists := c.parentFunctions[functionName]
+	if !internalExists && !externalExists {
+		err = errors.New("unknown function " + functionName)
+		return
+	}
+
+	if internalExists {
+		functionLineIndex := c.functions[functionName]
+		functionLineParameters := c.lines[functionLineIndex].Lexems[2:]
+		parameters := c.parseParameters(funcCallBody[1:])
+		ctx := NewContext(c.currentLine + 1)
+		for i := range functionLineParameters {
+			ctx.vars[functionLineParameters[i]] = nil
+			if i < len(parameters) {
+				ctx.vars[functionLineParameters[i]] = parameters[i]
+			}
+		}
+		c.stack = append(c.stack, c.context)
+		c.context = ctx
+		c.currentLine = functionLineIndex + 1
+		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("fn", -1))
+	} else {
+		if externalExists {
+			parameters := c.parseParameters(funcCallBody[1:])
+			extFunctinon := c.parentFunctions[functionName]
+			extFunctinon(parameters...)
+			c.currentLine++
 		}
 	}
-	c.stack = append(c.stack, c.context)
-	c.context = ctx
-	c.currentLine = functionLineIndex + 1
-	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("fn", -1))
+	return
 }
 
 func (c *Program) parseParameters(parts []string) []interface{} {
@@ -123,13 +134,6 @@ func (c *Program) parseParameters(parts []string) []interface{} {
 		parameters[i] = c.get(parts[i])
 	}
 	return parameters
-}
-
-func (c *Program) fnExtCall(funcCallBody []string) {
-	functionName := funcCallBody[0]
-	parameters := c.parseParameters(funcCallBody[1:])
-	c.parentFunctions[functionName](parameters...)
-	c.currentLine++
 }
 
 func (c *Program) fnReturn() {
@@ -177,7 +181,7 @@ func (c *Program) fnIf() {
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
 	}
-	cond, err := c.calcCondition(line)
+	cond, err := c.context.calcCondition(line)
 	if err != nil {
 		panic(err)
 	}
@@ -195,64 +199,6 @@ func (c *Program) fnIf() {
 	*/
 }
 
-func (c *Program) calcCondition(cond []string) (result bool, err error) {
-	if len(cond) != 3 {
-		err = errors.New("wrong condition length")
-		return
-	}
-
-	p1 := cond[0]
-	op := cond[1]
-	p2 := cond[2]
-	pv1 := c.get(p1)
-	pv2 := c.get(p2)
-
-	// int64
-	pv1int, pv1int_ok := pv1.(int64)
-	pv2int, pv2int_ok := pv2.(int64)
-	if pv1int_ok && pv2int_ok {
-		switch op {
-		case "<":
-			result = pv1int < pv2int
-			return
-		case "<=":
-			result = pv1int <= pv2int
-			return
-		case "==":
-			result = pv1int == pv2int
-			return
-		case ">=":
-			result = pv1int >= pv2int
-			return
-		case ">":
-			result = pv1int > pv2int
-			return
-		}
-	}
-
-	// double
-	pv1double, pv1double_ok := pv1.(float64)
-	pv2double, pv2double_ok := pv2.(float64)
-	if pv1double_ok && pv2double_ok {
-		switch op {
-		case "<":
-			result = pv1double < pv2double
-		case "<=":
-			result = pv1double <= pv2double
-		case "==":
-			result = pv1double == pv2double
-		case ">=":
-			result = pv1double >= pv2double
-		case ">":
-			result = pv1double > pv2double
-		}
-	}
-
-	err = errors.New("wrong contition")
-
-	return
-}
-
 func (c *Program) fnWhile() {
 	last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
 	if last.beginIndex != c.currentLine {
@@ -262,7 +208,7 @@ func (c *Program) fnWhile() {
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
 	}
-	cond, err := c.calcCondition(line)
+	cond, err := c.context.calcCondition(line)
 	if err != nil {
 		panic("wrong condition")
 	}
@@ -319,7 +265,7 @@ func (c *Program) fnElse() {
 
 }
 
-func (c *Program) fnSet() {
+func (c *Program) fnSet() (err error) {
 	// type of set
 	setLine := c.lines[c.currentLine].Lexems
 	leftPart := make([]string, 0)
@@ -329,57 +275,28 @@ func (c *Program) fnSet() {
 		}
 		leftPart = append(leftPart, setLine[i])
 	}
-	rigthPart := setLine[len(leftPart)+1:]
-	fmt.Println("SET left:", leftPart, "right:", rigthPart)
-	if len(rigthPart) == 0 {
-		c.currentLine++
+	var rightPart []string
+	if len(leftPart) == len(setLine) {
+		leftPart = nil
+		rightPart = setLine
+	} else {
+		rightPart = setLine[len(leftPart)+1:]
+	}
+
+	fmt.Println("SET left:", leftPart, "right:", rightPart)
+	if len(rightPart) == 0 {
+		err = errors.New("no right part on operation")
 		return
 	}
 
-	l0 := rigthPart[0]
+	err = c.fnCall(rightPart)
 
-	_, isFunctionCall := c.functions[l0]
-	if isFunctionCall {
-		c.fnCall(rigthPart)
-		return
-	}
-	_, isExpFunctionCall := c.parentFunctions[l0]
-	if isExpFunctionCall {
-		c.fnExtCall(rigthPart)
-		return
-	}
-
-	if len(rigthPart) == 1 {
+	/*if len(rigthPart) == 1 {
 		c.set(leftPart[0], c.get(rigthPart[0]))
-	}
-
-	if len(rigthPart) == 3 {
-		result := int64(0)
-		p1 := rigthPart[0]
-		op := rigthPart[1]
-		p2 := rigthPart[2]
-		pv1 := c.get(p1)
-		pv2 := c.get(p2)
-
-		// int64
-		pv1int, pv1int_ok := pv1.(int64)
-		pv2int, pv2int_ok := pv2.(int64)
-		if pv1int_ok && pv2int_ok {
-			switch op {
-			case "+":
-				result = pv1int + pv2int
-			case "-":
-				result = pv1int - pv2int
-			case "*":
-				result = pv1int * pv2int
-			case "/":
-				result = pv1int / pv2int
-			}
-		}
-		c.set(leftPart[0], result)
-	}
+	}*/
 
 	c.currentLine++
+	return
 }
 
 func (c *Program) set(name string, value interface{}) {

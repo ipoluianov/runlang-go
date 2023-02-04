@@ -15,7 +15,12 @@ func main() {
 	p := runlang.NewProgram()
 	p.Compile(code)
 
-	p.Run()
+	err := p.Run()
+	if err != nil {
+		fmt.Println("*********************")
+		fmt.Println("ERROR:", err.Error())
+		fmt.Println("*********************")
+	}
 
 	fmt.Println("--------------")
 }
