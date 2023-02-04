@@ -25,6 +25,9 @@ func NewProgram() *Program {
 	c.parentFunctions = make(map[string]func(args ...interface{}) ([]interface{}, error))
 	c.parentFunctions["run.add"] = lib.Add
 	c.parentFunctions["run.print"] = lib.Print
+	c.parentFunctions["run.int64"] = lib.TypeInt64
+	c.parentFunctions["run.double"] = lib.TypeDouble
+	c.parentFunctions["run.pow"] = lib.Pow
 	return &c
 }
 
@@ -63,7 +66,7 @@ func (c *Program) ExecLine() (err error) {
 		return
 	}
 	l0 := c.lines[c.currentLine].Lexems[0]
-	fmt.Println("ExecLine", c.currentLine, c.lines[c.currentLine].Lexems)
+	//fmt.Println("ExecLine", c.currentLine+1, c.lines[c.currentLine].Lexems)
 	if l0 == "return" {
 		c.fnReturn()
 		return
@@ -85,7 +88,7 @@ func (c *Program) ExecLine() (err error) {
 		return
 	}
 	if l0 == "}" {
-		c.fnEnd()
+		c.fnEnd(true)
 		return
 	}
 	if l0 == "dump" {
@@ -200,8 +203,8 @@ func (c *Program) fnFn() {
 }
 
 func (c *Program) fnIf() {
-	// if a > b {
 	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("if", c.currentLine+1))
+	// if a > b {
 	line := c.lines[c.currentLine].Lexems[1:]
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
@@ -215,6 +218,8 @@ func (c *Program) fnIf() {
 		return
 	}
 	c.skipBlock()
+	c.currentLine-- // to end }
+	c.fnEnd(false)
 	/*
 	   ls := c.lines[c.currentLine].Lexems
 
@@ -225,10 +230,18 @@ func (c *Program) fnIf() {
 }
 
 func (c *Program) fnWhile() {
-	last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
-	if last.beginIndex != c.currentLine {
+	firstExecution := true
+	if len(c.context.stackIfWhile) > 0 {
+		last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
+		if last.beginIndex == c.currentLine {
+			firstExecution = false
+		}
+	}
+
+	if firstExecution {
 		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("while", c.currentLine))
 	}
+
 	line := c.lines[c.currentLine].Lexems[1:]
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
@@ -268,7 +281,7 @@ func (c *Program) fnDump() {
 	c.currentLine++
 }
 
-func (c *Program) fnEnd() {
+func (c *Program) fnEnd(skipElse bool) {
 	if len(c.context.stackIfWhile) == 0 {
 		panic("wrong block")
 	}
@@ -283,21 +296,24 @@ func (c *Program) fnEnd() {
 		return
 	}
 	if el.tp == "if" {
-		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
+		removeIfStatement := true
 		ls := c.lines[c.currentLine].Lexems
+
 		if len(ls) == 3 && ls[0] == "}" && ls[1] == "else" && ls[2] == "{" {
-			c.skipBlock()
+			if skipElse {
+				c.skipBlock()
+			} else {
+				removeIfStatement = false
+				c.currentLine++ // in else
+			}
 		} else {
 			c.currentLine++
 		}
-	}
-}
 
-func (c *Program) fnElse() {
-	for c.currentLine < len(c.lines) && c.lines[c.currentLine].Lexems[0] != "end" {
-		c.currentLine++
+		if removeIfStatement {
+			c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
+		}
 	}
-
 }
 
 func (c *Program) fnSet() (err error) {
@@ -318,7 +334,7 @@ func (c *Program) fnSet() (err error) {
 		rightPart = setLine[len(leftPart)+1:]
 	}
 
-	fmt.Println("SET left:", leftPart, "right:", rightPart)
+	//fmt.Println("SET left:", leftPart, "right:", rightPart)
 	if len(rightPart) == 0 {
 		err = errors.New("no right part on operation")
 		return

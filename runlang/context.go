@@ -73,14 +73,19 @@ func (c *Context) calcCondition(cond []string) (result bool, err error) {
 		switch op {
 		case "<":
 			result = pv1double < pv2double
+			return
 		case "<=":
 			result = pv1double <= pv2double
+			return
 		case "==":
 			result = pv1double == pv2double
+			return
 		case ">=":
 			result = pv1double >= pv2double
+			return
 		case ">":
 			result = pv1double > pv2double
+			return
 		}
 	}
 

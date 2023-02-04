@@ -2,9 +2,27 @@ fn add(a, b) {
     dump
     res = run.add(a, b)
     dump
-    return res
+    return res, 42
 }
 
-r = add(2, 3)
-dump
-run.print(r)
+i = run.double(0)
+res = run.double(0)
+max = run.double(100)
+const1 = run.double(1)
+
+while (res < max) {
+    const2 = run.double(2)
+    r = run.pow(const2, i)
+
+    if (r > max) {
+        break
+    }
+
+    run.print(222)
+
+    i = run.add(i, const1)
+    res = run.double(r)
+    run.print(res)
+}
+
+run.print(res)
