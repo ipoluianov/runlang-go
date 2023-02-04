@@ -1,9 +1,11 @@
 package runlang
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Line struct {
@@ -14,6 +16,7 @@ type Line struct {
 type Context struct {
 	returnToLine int
 	vars         map[string]interface{}
+	stackIfWhile []*Block
 }
 
 func NewContext(returnToLine int) *Context {
@@ -41,7 +44,6 @@ type Program struct {
 	context         *Context
 	functions       map[string]int
 	stack           []*Context
-	stackIfWhile    []*Block
 	parentFunctions map[string]func(args ...interface{})
 }
 
@@ -83,12 +85,13 @@ func (c *Program) Run() {
 }
 
 func (c *Program) ExecLine() {
+	time.Sleep(100 * time.Millisecond)
 	if len(c.lines[c.currentLine].Lexems) < 1 {
 		c.currentLine++
 		return
 	}
 	l0 := c.lines[c.currentLine].Lexems[0]
-	fmt.Println("ExecLine:", c.lines[c.currentLine].Lexems)
+	fmt.Println("ExecLine", c.currentLine, c.lines[c.currentLine].Lexems)
 	_, isFunctionCall := c.functions[l0]
 	if isFunctionCall {
 		c.fnCall(c.lines[c.currentLine].Lexems)
@@ -115,7 +118,11 @@ func (c *Program) ExecLine() {
 		c.fnWhile()
 		return
 	}
-	if l0 == "end" {
+	if l0 == "break" {
+		c.fnBreak()
+		return
+	}
+	if l0 == "}" {
 		c.fnEnd()
 		return
 	}
@@ -138,6 +145,7 @@ func (c *Program) fnCall(funcCallBody []string) {
 	c.stack = append(c.stack, c.context)
 	c.context = ctx
 	c.currentLine = functionLineIndex + 1
+	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("fn", -1))
 }
 
 func (c *Program) parseParameters(parts []string) []interface{} {
@@ -156,53 +164,183 @@ func (c *Program) fnExtCall(funcCallBody []string) {
 }
 
 func (c *Program) fnReturn() {
+	c.exitFromFunction(nil)
+}
+
+func (c *Program) exitFromFunction(results []string) {
 	c.currentLine = c.context.returnToLine
 	c.context = c.stack[len(c.stack)-1]
 	c.stack = c.stack[:len(c.stack)-1]
 }
 
-func (c *Program) fnFn() {
+func (c *Program) skipBlock() {
+	opened := 1
+	c.currentLine++
 	for c.currentLine < len(c.lines) {
 		ls := c.lines[c.currentLine].Lexems
-		if len(ls) > 0 {
-			if ls[0] == "return" {
+		for i := range ls {
+			if ls[i] == "{" {
+				opened++
+			}
+			if opened == 0 {
 				break
 			}
+			if ls[i] == "}" {
+				opened--
+			}
+		}
+		if opened == 0 {
+			break
 		}
 		c.currentLine++
 	}
 	c.currentLine++
 }
 
+func (c *Program) fnFn() {
+	c.skipBlock()
+}
+
 func (c *Program) fnIf() {
-	c.stackIfWhile = append(c.stackIfWhile, NewBlock("if", c.currentLine+1))
-	cond := c.calcCondition()
+	// if a > b {
+	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("if", c.currentLine+1))
+	line := c.lines[c.currentLine].Lexems[1:]
+	if line[len(line)-1] == "{" {
+		line = line[:len(line)-1]
+	}
+	cond, err := c.calcCondition(line)
+	if err != nil {
+		panic(err)
+	}
 	if cond {
 		c.currentLine++
 		return
 	}
-	for c.currentLine < len(c.lines) && c.lines[c.currentLine].Lexems[0] != "end" && c.lines[c.currentLine].Lexems[0] != "else" {
-		c.currentLine++
-	}
-	c.currentLine++
+	c.skipBlock()
+	/*
+	   ls := c.lines[c.currentLine].Lexems
+
+	   	if len(ls) == 3 && ls[0] == "}" && ls[1] == "else" && ls[2] == "{" {
+	   		c.currentLine++
+	   	}
+	*/
 }
 
-func (c *Program) calcCondition() bool {
-	return true
+func (c *Program) calcCondition(cond []string) (result bool, err error) {
+	if len(cond) != 3 {
+		err = errors.New("wrong condition length")
+		return
+	}
+
+	p1 := cond[0]
+	op := cond[1]
+	p2 := cond[2]
+	pv1 := c.get(p1)
+	pv2 := c.get(p2)
+
+	// int64
+	pv1int, pv1int_ok := pv1.(int64)
+	pv2int, pv2int_ok := pv2.(int64)
+	if pv1int_ok && pv2int_ok {
+		switch op {
+		case "<":
+			result = pv1int < pv2int
+			return
+		case "<=":
+			result = pv1int <= pv2int
+			return
+		case "==":
+			result = pv1int == pv2int
+			return
+		case ">=":
+			result = pv1int >= pv2int
+			return
+		case ">":
+			result = pv1int > pv2int
+			return
+		}
+	}
+
+	// double
+	pv1double, pv1double_ok := pv1.(float64)
+	pv2double, pv2double_ok := pv2.(float64)
+	if pv1double_ok && pv2double_ok {
+		switch op {
+		case "<":
+			result = pv1double < pv2double
+		case "<=":
+			result = pv1double <= pv2double
+		case "==":
+			result = pv1double == pv2double
+		case ">=":
+			result = pv1double >= pv2double
+		case ">":
+			result = pv1double > pv2double
+		}
+	}
+
+	err = errors.New("wrong contition")
+
+	return
 }
 
 func (c *Program) fnWhile() {
-	c.stackIfWhile = append(c.stackIfWhile, NewBlock("while", c.currentLine+1))
+	last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
+	if last.beginIndex != c.currentLine {
+		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("while", c.currentLine))
+	}
+	line := c.lines[c.currentLine].Lexems[1:]
+	if line[len(line)-1] == "{" {
+		line = line[:len(line)-1]
+	}
+	cond, err := c.calcCondition(line)
+	if err != nil {
+		panic("wrong condition")
+	}
+
+	if !cond {
+		c.fnBreak()
+		return
+	}
+
+	c.currentLine++
+}
+
+func (c *Program) fnBreak() {
+	for len(c.context.stackIfWhile) > 0 {
+		last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
+		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
+		if last.tp == "while" {
+			c.currentLine = last.beginIndex
+			c.skipBlock()
+			break
+		}
+	}
 }
 
 func (c *Program) fnEnd() {
-	el := c.stackIfWhile[len(c.stackIfWhile)-1]
+	if len(c.context.stackIfWhile) == 0 {
+		panic("wrong block")
+	}
+	el := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
 	if el.tp == "while" {
 		c.currentLine = el.beginIndex
 		return
 	}
-	c.stackIfWhile = c.stackIfWhile[:len(c.stackIfWhile)-1]
-	c.currentLine++
+	if el.tp == "fn" {
+		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
+		c.exitFromFunction(nil)
+		return
+	}
+	if el.tp == "if" {
+		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
+		ls := c.lines[c.currentLine].Lexems
+		if len(ls) == 3 && ls[0] == "}" && ls[1] == "else" && ls[2] == "{" {
+			c.skipBlock()
+		} else {
+			c.currentLine++
+		}
+	}
 }
 
 func (c *Program) fnElse() {
@@ -247,12 +385,26 @@ func (c *Program) fnSet() {
 
 	if len(rigthPart) == 3 {
 		result := int64(0)
-		p1, _ := strconv.ParseInt(rigthPart[0], 10, 64)
+		p1 := rigthPart[0]
 		op := rigthPart[1]
-		p2, _ := strconv.ParseInt(rigthPart[2], 10, 64)
+		p2 := rigthPart[2]
+		pv1 := c.get(p1)
+		pv2 := c.get(p2)
 
-		if op == "+" {
-			result = p1 + p2
+		// int64
+		pv1int, pv1int_ok := pv1.(int64)
+		pv2int, pv2int_ok := pv2.(int64)
+		if pv1int_ok && pv2int_ok {
+			switch op {
+			case "+":
+				result = pv1int + pv2int
+			case "-":
+				result = pv1int - pv2int
+			case "*":
+				result = pv1int * pv2int
+			case "/":
+				result = pv1int / pv2int
+			}
 		}
 		c.set(leftPart[0], result)
 	}

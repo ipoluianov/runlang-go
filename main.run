@@ -1,10 +1,13 @@
-fn ppp val
-    if (5 > 3)
-        print(val)
-    end
-return
+fn ppp(val) {
+    if (5 < 3) {
+        print(11)
+    } else {
+        i = 0
+        while i < 5 {
+            print(i)
+            i = i + 1
+        }
+    }
+}
 
-a1 = 2 + 2
 ppp(a1)
-a2 = 55
-ppp a2

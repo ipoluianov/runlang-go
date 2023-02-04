@@ -17,5 +17,5 @@ func main() {
 
 	p.Run()
 
-	fmt.Println("123")
+	fmt.Println("--------------")
 }
