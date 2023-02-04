@@ -1,3 +1,10 @@
-r = run.add(2, 3)
-q = run.pow(2, 10)
-run.print(q)
+fn add(a, b) {
+    dump
+    res = run.add(a, b)
+    dump
+    return res
+}
+
+r = add(2, 3)
+dump
+run.print(r)

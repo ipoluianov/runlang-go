@@ -9,6 +9,7 @@ type Context struct {
 	returnToLine int
 	vars         map[string]interface{}
 	stackIfWhile []*Block
+	resultPlaces []string
 }
 
 func NewContext(returnToLine int) *Context {
