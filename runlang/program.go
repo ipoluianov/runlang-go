@@ -8,20 +8,24 @@ import (
 	"github.com/ipoluianov/runlang-go/lib"
 )
 
+type UniFunc func(args ...interface{}) ([]interface{}, error)
+
 type Program struct {
 	currentLine     int
 	lines           []*Line
 	context         *Context
 	functions       map[string]int
 	stack           []*Context
-	parentFunctions map[string]func(args ...interface{}) ([]interface{}, error)
+	parentFunctions map[string]UniFunc
+	debugMode       bool
 }
 
 func NewProgram() *Program {
 	var c Program
+	c.debugMode = false
 	c.context = NewContext(-1)
 	c.functions = make(map[string]int)
-	c.parentFunctions = make(map[string]func(args ...interface{}) ([]interface{}, error))
+	c.parentFunctions = make(map[string]UniFunc)
 	c.parentFunctions["run.add"] = lib.Add
 	c.parentFunctions["run.sub"] = lib.Sub
 	c.parentFunctions["run.mul"] = lib.Mul
@@ -33,6 +37,17 @@ func NewProgram() *Program {
 	c.parentFunctions["run.int64"] = lib.TypeInt64
 	c.parentFunctions["run.double"] = lib.TypeDouble
 	return &c
+}
+
+func (c *Program) AddFunction(name string, f UniFunc) {
+	c.parentFunctions[name] = f
+}
+
+func (c *Program) debug(args ...interface{}) {
+	if !c.debugMode {
+		return
+	}
+	fmt.Println(args...)
 }
 
 func (c *Program) Compile(code string) {
@@ -52,11 +67,37 @@ func (c *Program) Compile(code string) {
 	}
 }
 
+func (c *Program) RunFn(functionName string, args ...interface{}) (result []interface{}, err error) {
+	if _, ok := c.functions[functionName]; ok {
+		c.currentLine = len(c.lines)
+		argsValues := make([]string, 0)
+		for i := range args {
+			if strValue, ok := args[i].(string); ok {
+				argsValues = append(argsValues, fmt.Sprint("\"", strValue, "\""))
+			} else {
+				argsValues = append(argsValues, fmt.Sprint(args[i]))
+			}
+		}
+		callBody := make([]string, 0)
+		callBody = append(callBody, functionName)
+		callBody = append(callBody, argsValues...)
+		c.fnCall(nil, callBody)
+		err = c.run()
+		return c.context.lastCallResult, err
+	}
+	return nil, errors.New("wrong function")
+}
+
 func (c *Program) Run() (err error) {
 	c.currentLine = 0
+	return c.run()
+}
+
+func (c *Program) run() (err error) {
 	for c.currentLine >= 0 && c.currentLine < len(c.lines) {
 		err = c.ExecLine()
 		if err != nil {
+			err = errors.New("line " + fmt.Sprint(c.currentLine) + ":" + fmt.Sprint(c.lines[c.currentLine].Lexems) + " = " + err.Error())
 			return
 		}
 	}
@@ -70,7 +111,7 @@ func (c *Program) ExecLine() (err error) {
 		return
 	}
 	l0 := c.lines[c.currentLine].Lexems[0]
-	//fmt.Println("ExecLine", c.currentLine+1, c.lines[c.currentLine].Lexems)
+	c.debug("ExecLine", c.currentLine+1, c.lines[c.currentLine].Lexems)
 	if l0 == "return" {
 		err = c.fnReturn()
 		return
@@ -122,6 +163,7 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 			return err
 		}
 		ctx := NewContext(c.currentLine + 1)
+		ctx.functionName = functionName
 		for i := range functionLineParameters {
 			ctx.vars[functionLineParameters[i]] = nil
 			if i < len(parameters) {
@@ -131,7 +173,7 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 		c.stack = append(c.stack, c.context)
 		c.context = ctx
 		c.currentLine = functionLineIndex + 1
-		block := NewBlock("fn", -1)
+		block := NewBlock("fn", -1, "internal:"+functionName)
 		ctx.resultPlaces = resultPlaces
 		c.context.stackIfWhile = append(c.context.stackIfWhile, block)
 	} else {
@@ -143,6 +185,9 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 			extFunctinon := c.parentFunctions[functionName]
 			var resultValues []interface{}
 			resultValues, err = extFunctinon(parameters...)
+			if err != nil {
+				return err
+			}
 			// Put results into local variables
 			for i := range resultPlaces {
 				if i < len(resultValues) {
@@ -191,6 +236,7 @@ func (c *Program) exitFromFunction(results []interface{}) error {
 			c.set(contextOfFunction.resultPlaces[i], results[i])
 		}
 	}
+	c.context.lastCallResult = results
 	return nil
 }
 
@@ -225,9 +271,9 @@ func (c *Program) fnFn() error {
 }
 
 func (c *Program) fnIf() error {
-	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("if", c.currentLine+1))
-	// if a > b {
 	line := c.lines[c.currentLine].Lexems[1:]
+	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("if", c.currentLine+1, fmt.Sprint(line)))
+	// if a > b {
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
 	}
@@ -242,13 +288,6 @@ func (c *Program) fnIf() error {
 	c.skipBlock()
 	c.currentLine-- // to end }
 	c.fnEnd(false)
-	/*
-	   ls := c.lines[c.currentLine].Lexems
-
-	   	if len(ls) == 3 && ls[0] == "}" && ls[1] == "else" && ls[2] == "{" {
-	   		c.currentLine++
-	   	}
-	*/
 	return nil
 }
 
@@ -261,17 +300,17 @@ func (c *Program) fnWhile() error {
 		}
 	}
 
+	line := c.lines[c.currentLine].Lexems[1:]
 	if firstExecution {
-		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("while", c.currentLine))
+		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("while", c.currentLine, fmt.Sprint(line)))
 	}
 
-	line := c.lines[c.currentLine].Lexems[1:]
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
 	}
 	cond, err := c.context.calcCondition(line)
 	if err != nil {
-		panic("wrong condition")
+		return err
 	}
 
 	if !cond {
@@ -309,7 +348,7 @@ func (c *Program) fnDump() error {
 
 func (c *Program) fnEnd(skipElse bool) error {
 	if len(c.context.stackIfWhile) == 0 {
-		panic("wrong block")
+		return errors.New("no more instructions")
 	}
 	el := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
 	if el.tp == "while" {
@@ -387,7 +426,7 @@ func (c *Program) fnSet() (err error) {
 					parameters[0] = "run.div"
 				}
 				if len(parameters[0]) > 0 {
-					c.fnCall(leftPart, parameters)
+					err = c.fnCall(leftPart, parameters)
 					return
 				} else {
 					err = errors.New("wrong operation")

@@ -5,10 +5,12 @@ import (
 )
 
 type Context struct {
-	returnToLine int
-	vars         map[string]interface{}
-	stackIfWhile []*Block
-	resultPlaces []string
+	returnToLine   int
+	functionName   string
+	vars           map[string]interface{}
+	stackIfWhile   []*Block
+	resultPlaces   []string
+	lastCallResult []interface{}
 }
 
 func NewContext(returnToLine int) *Context {
