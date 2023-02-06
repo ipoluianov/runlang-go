@@ -3,6 +3,7 @@ package runlang
 import (
 	"errors"
 	"strconv"
+	"strings"
 )
 
 type Context struct {
@@ -20,9 +21,21 @@ func NewContext(returnToLine int) *Context {
 }
 
 func (c *Context) get(name string) interface{} {
-	iVal, err := strconv.ParseInt(name, 10, 64)
-	if err == nil {
-		return iVal
+	if len(name) == 0 {
+		return nil
+	}
+	if name[0] == '-' || (name[0] >= '0' && name[0] <= 9) {
+		if strings.Contains(name, ".") {
+			dVal, err := strconv.ParseFloat(name, 64)
+			if err == nil {
+				return dVal
+			}
+		} else {
+			iVal, err := strconv.ParseInt(name, 10, 64)
+			if err == nil {
+				return iVal
+			}
+		}
 	}
 	return c.vars[name]
 }

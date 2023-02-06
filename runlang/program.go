@@ -316,28 +316,62 @@ func (c *Program) fnEnd(skipElse bool) {
 	}
 }
 
+func (c *Program) isFunction(name string) bool {
+	_, internalExists := c.functions[name]
+	_, externalExists := c.parentFunctions[name]
+	return internalExists || externalExists
+}
+
 func (c *Program) fnSet() (err error) {
-	// type of set
-	setLine := c.lines[c.currentLine].Lexems
+	ls := c.lines[c.currentLine].Lexems
 	leftPart := make([]string, 0)
-	for i := 0; i < len(setLine); i++ {
-		if setLine[i] == "=" {
+	for i := 0; i < len(ls); i++ {
+		if ls[i] == "=" {
 			break
 		}
-		leftPart = append(leftPart, setLine[i])
+		leftPart = append(leftPart, ls[i])
 	}
 	var rightPart []string
-	if len(leftPart) == len(setLine) {
+	if len(leftPart) == len(ls) {
 		leftPart = nil
-		rightPart = setLine
+		rightPart = ls
 	} else {
-		rightPart = setLine[len(leftPart)+1:]
+		rightPart = ls[len(leftPart)+1:]
 	}
-
-	//fmt.Println("SET left:", leftPart, "right:", rightPart)
 	if len(rightPart) == 0 {
 		err = errors.New("no right part on operation")
 		return
+	}
+
+	if len(leftPart) == 1 {
+		if !c.isFunction(rightPart[0]) {
+			if len(rightPart) == 3 {
+				parameters := make([]string, 3)
+				parameters[1] = rightPart[0]
+				parameters[2] = rightPart[2]
+				switch rightPart[1] {
+				case "+":
+					parameters[0] = "run.add"
+				case "-":
+					parameters[0] = "run.sub"
+				case "*":
+					parameters[0] = "run.mul"
+				case "/":
+					parameters[0] = "run.div"
+				}
+				if len(parameters[0]) > 0 {
+					c.fnCall(leftPart, parameters)
+					return
+				} else {
+					err = errors.New("wrong operation")
+					return
+				}
+			}
+
+			if len(rightPart) == 1 {
+				c.set(leftPart[0], c.get(rightPart[0]))
+			}
+		}
 	}
 
 	err = c.fnCall(leftPart, rightPart)
