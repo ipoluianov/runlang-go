@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ipoluianov/runlang-go/lib"
 )
@@ -60,7 +59,7 @@ func (c *Program) Run() (err error) {
 }
 
 func (c *Program) ExecLine() (err error) {
-	time.Sleep(100 * time.Millisecond)
+	//time.Sleep(10 * time.Millisecond)
 	if len(c.lines[c.currentLine].Lexems) < 1 {
 		c.currentLine++
 		return
@@ -370,6 +369,8 @@ func (c *Program) fnSet() (err error) {
 
 			if len(rightPart) == 1 {
 				c.set(leftPart[0], c.get(rightPart[0]))
+				c.currentLine++
+				return
 			}
 		}
 	}

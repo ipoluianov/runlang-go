@@ -1,28 +1,6 @@
-fn add(a, b) {
-    dump
-    res = run.add(a, b)
-    dump
-    return res, 42
-}
-
-i = run.double(0)
-res = run.double(0)
-max = run.double(100)
-const1 = run.double(1)
+res = 0.0
+max = 10000000.0
 
 while (res < max) {
-    const2 = run.double(2)
-    r = run.pow(const2, i)
-
-    if (r > max) {
-        break
-    }
-
-    run.print(222)
-
-    i = run.add(i, const1)
-    res = run.double(r)
-    run.print(res)
+    res = res + 1.0
 }
-
-run.print(res)
