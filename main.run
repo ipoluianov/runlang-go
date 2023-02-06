@@ -1,6 +1,2 @@
-res = 0.0
-max = 10000000.0
-
-while (res < max) {
-    res = res + 1.0
-}
+i = "str"
+run.print(i)

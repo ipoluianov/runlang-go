@@ -18,15 +18,18 @@ func NewContext(returnToLine int) *Context {
 	return &c
 }
 
-func (c *Context) get(name string) interface{} {
+func (c *Context) get(name string) (interface{}, error) {
 	if len(name) == 0 {
-		return nil
+		return nil, errors.New("empty lexem")
 	}
-	constValue := parseConstrant(name)
+	constValue, err := parseConstrant(name)
+	if err != nil {
+		return nil, err
+	}
 	if constValue != nil {
-		return constValue
+		return constValue, nil
 	}
-	return c.vars[name]
+	return c.vars[name], nil
 }
 
 func (c *Context) set(name string, value interface{}) {
@@ -42,8 +45,14 @@ func (c *Context) calcCondition(cond []string) (result bool, err error) {
 	p1 := cond[0]
 	op := cond[1]
 	p2 := cond[2]
-	pv1 := c.get(p1)
-	pv2 := c.get(p2)
+	pv1, err := c.get(p1)
+	if err != nil {
+		return false, err
+	}
+	pv2, err := c.get(p2)
+	if err != nil {
+		return false, err
+	}
 
 	// int64
 	pv1int, pv1int_ok := pv1.(int64)

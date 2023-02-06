@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-func Add(args ...interface{}) (result []interface{}, err error) {
+func Sub(args ...interface{}) (result []interface{}, err error) {
 	if len(args) != 2 {
 		err = errors.New("wrong arguments")
 		return
@@ -21,7 +21,7 @@ func Add(args ...interface{}) (result []interface{}, err error) {
 			err = errors.New("wrong parameter")
 			return
 		}
-		result = append(result, x+y)
+		result = append(result, x-y)
 		return
 	}
 	_, isDouble := args[0].(float64)
@@ -36,7 +36,7 @@ func Add(args ...interface{}) (result []interface{}, err error) {
 			err = errors.New("wrong parameter")
 			return
 		}
-		result = append(result, x+y)
+		result = append(result, x-y)
 		return
 	}
 	return nil, errors.New("wrong type")

@@ -23,10 +23,15 @@ func NewProgram() *Program {
 	c.functions = make(map[string]int)
 	c.parentFunctions = make(map[string]func(args ...interface{}) ([]interface{}, error))
 	c.parentFunctions["run.add"] = lib.Add
+	c.parentFunctions["run.sub"] = lib.Sub
+	c.parentFunctions["run.mul"] = lib.Mul
+	c.parentFunctions["run.div"] = lib.Div
+
 	c.parentFunctions["run.print"] = lib.Print
+
+	c.parentFunctions["run.string"] = lib.TypeString
 	c.parentFunctions["run.int64"] = lib.TypeInt64
 	c.parentFunctions["run.double"] = lib.TypeDouble
-	c.parentFunctions["run.pow"] = lib.Pow
 	return &c
 }
 
@@ -67,31 +72,31 @@ func (c *Program) ExecLine() (err error) {
 	l0 := c.lines[c.currentLine].Lexems[0]
 	//fmt.Println("ExecLine", c.currentLine+1, c.lines[c.currentLine].Lexems)
 	if l0 == "return" {
-		c.fnReturn()
+		err = c.fnReturn()
 		return
 	}
 	if l0 == "fn" {
-		c.fnFn()
+		err = c.fnFn()
 		return
 	}
 	if l0 == "if" {
-		c.fnIf()
+		err = c.fnIf()
 		return
 	}
 	if l0 == "while" {
-		c.fnWhile()
+		err = c.fnWhile()
 		return
 	}
 	if l0 == "break" {
-		c.fnBreak()
+		err = c.fnBreak()
 		return
 	}
 	if l0 == "}" {
-		c.fnEnd(true)
+		err = c.fnEnd(true)
 		return
 	}
 	if l0 == "dump" {
-		c.fnDump()
+		err = c.fnDump()
 		return
 	}
 
@@ -112,7 +117,10 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 		functionLineIndex := c.functions[functionName]
 		ls := c.lines[functionLineIndex].Lexems
 		functionLineParameters := ls[2 : len(ls)-1]
-		parameters := c.parseParameters(funcCallBody[1:])
+		parameters, err := c.parseParameters(funcCallBody[1:])
+		if err != nil {
+			return err
+		}
 		ctx := NewContext(c.currentLine + 1)
 		for i := range functionLineParameters {
 			ctx.vars[functionLineParameters[i]] = nil
@@ -128,7 +136,10 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 		c.context.stackIfWhile = append(c.context.stackIfWhile, block)
 	} else {
 		if externalExists {
-			parameters := c.parseParameters(funcCallBody[1:])
+			parameters, err := c.parseParameters(funcCallBody[1:])
+			if err != nil {
+				return err
+			}
 			extFunctinon := c.parentFunctions[functionName]
 			var resultValues []interface{}
 			resultValues, err = extFunctinon(parameters...)
@@ -144,24 +155,33 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 	return
 }
 
-func (c *Program) parseParameters(parts []string) []interface{} {
+func (c *Program) parseParameters(parts []string) ([]interface{}, error) {
 	parameters := make([]interface{}, len(parts))
 	for i := 0; i < len(parameters); i++ {
-		parameters[i] = c.get(parts[i])
+		v, err := c.get(parts[i])
+		if err != nil {
+			return nil, err
+		}
+		parameters[i] = v
 	}
-	return parameters
+	return parameters, nil
 }
 
-func (c *Program) fnReturn() {
+func (c *Program) fnReturn() error {
 	results := make([]interface{}, 0)
 	ls := c.lines[c.currentLine].Lexems
 	for i := 1; i < len(ls); i++ {
-		results = append(results, c.get(ls[i]))
+		v, err := c.get(ls[i])
+		if err != nil {
+			return err
+		}
+		results = append(results, v)
 	}
 	c.exitFromFunction(results)
+	return nil
 }
 
-func (c *Program) exitFromFunction(results []interface{}) {
+func (c *Program) exitFromFunction(results []interface{}) error {
 	c.currentLine = c.context.returnToLine
 	contextOfFunction := c.context
 	c.context = c.stack[len(c.stack)-1]
@@ -171,9 +191,10 @@ func (c *Program) exitFromFunction(results []interface{}) {
 			c.set(contextOfFunction.resultPlaces[i], results[i])
 		}
 	}
+	return nil
 }
 
-func (c *Program) skipBlock() {
+func (c *Program) skipBlock() error {
 	opened := 1
 	c.currentLine++
 	for c.currentLine < len(c.lines) {
@@ -195,13 +216,15 @@ func (c *Program) skipBlock() {
 		c.currentLine++
 	}
 	c.currentLine++
+	return nil
 }
 
-func (c *Program) fnFn() {
+func (c *Program) fnFn() error {
 	c.skipBlock()
+	return nil
 }
 
-func (c *Program) fnIf() {
+func (c *Program) fnIf() error {
 	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock("if", c.currentLine+1))
 	// if a > b {
 	line := c.lines[c.currentLine].Lexems[1:]
@@ -214,7 +237,7 @@ func (c *Program) fnIf() {
 	}
 	if cond {
 		c.currentLine++
-		return
+		return nil
 	}
 	c.skipBlock()
 	c.currentLine-- // to end }
@@ -226,9 +249,10 @@ func (c *Program) fnIf() {
 	   		c.currentLine++
 	   	}
 	*/
+	return nil
 }
 
-func (c *Program) fnWhile() {
+func (c *Program) fnWhile() error {
 	firstExecution := true
 	if len(c.context.stackIfWhile) > 0 {
 		last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
@@ -252,13 +276,14 @@ func (c *Program) fnWhile() {
 
 	if !cond {
 		c.fnBreak()
-		return
+		return nil
 	}
 
 	c.currentLine++
+	return nil
 }
 
-func (c *Program) fnBreak() {
+func (c *Program) fnBreak() error {
 	for len(c.context.stackIfWhile) > 0 {
 		last := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
 		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
@@ -268,9 +293,10 @@ func (c *Program) fnBreak() {
 			break
 		}
 	}
+	return nil
 }
 
-func (c *Program) fnDump() {
+func (c *Program) fnDump() error {
 	fmt.Println("--------------------")
 	fmt.Println("DUMP:")
 	for n, v := range c.context.vars {
@@ -278,21 +304,22 @@ func (c *Program) fnDump() {
 	}
 	fmt.Println("--------------------")
 	c.currentLine++
+	return nil
 }
 
-func (c *Program) fnEnd(skipElse bool) {
+func (c *Program) fnEnd(skipElse bool) error {
 	if len(c.context.stackIfWhile) == 0 {
 		panic("wrong block")
 	}
 	el := c.context.stackIfWhile[len(c.context.stackIfWhile)-1]
 	if el.tp == "while" {
 		c.currentLine = el.beginIndex
-		return
+		return nil
 	}
 	if el.tp == "fn" {
 		c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
 		c.exitFromFunction(nil)
-		return
+		return nil
 	}
 	if el.tp == "if" {
 		removeIfStatement := true
@@ -313,6 +340,7 @@ func (c *Program) fnEnd(skipElse bool) {
 			c.context.stackIfWhile = c.context.stackIfWhile[:len(c.context.stackIfWhile)-1]
 		}
 	}
+	return nil
 }
 
 func (c *Program) isFunction(name string) bool {
@@ -368,9 +396,13 @@ func (c *Program) fnSet() (err error) {
 			}
 
 			if len(rightPart) == 1 {
-				c.set(leftPart[0], c.get(rightPart[0]))
+				v, err := c.get(rightPart[0])
+				if err != nil {
+					return err
+				}
+				c.set(leftPart[0], v)
 				c.currentLine++
-				return
+				return nil
 			}
 		}
 	}
@@ -383,6 +415,6 @@ func (c *Program) set(name string, value interface{}) {
 	c.context.set(name, value)
 }
 
-func (c *Program) get(name string) interface{} {
+func (c *Program) get(name string) (interface{}, error) {
 	return c.context.get(name)
 }
