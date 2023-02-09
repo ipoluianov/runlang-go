@@ -18,6 +18,7 @@ type Program struct {
 	stack           []*Context
 	parentFunctions map[string]UniFunc
 	debugMode       bool
+	constants       map[string]interface{}
 }
 
 func NewProgram() *Program {
@@ -25,6 +26,7 @@ func NewProgram() *Program {
 	c.debugMode = false
 	c.context = NewContext(-1)
 	c.functions = make(map[string]int)
+	c.constants = make(map[string]interface{})
 	c.parentFunctions = make(map[string]UniFunc)
 	c.parentFunctions["run.add"] = lib.Add
 	c.parentFunctions["run.sub"] = lib.Sub
@@ -78,13 +80,43 @@ func (c *Program) Compile(code string) error {
 				if len(l.Lexems) != 5 {
 					return errors.New("wrong if")
 				}
-				l.Condition = l.Lexems[1 : len(l.Lexems)-1]
+				l.ConditionVal1 = l.Lexems[1]
+				switch l.Lexems[2] {
+				case "<":
+					l.ConditionOperation = ConditionTypeLess
+				case "<=":
+					l.ConditionOperation = ConditionTypeLessEq
+				case "==":
+					l.ConditionOperation = ConditionTypeEq
+				case ">=":
+					l.ConditionOperation = ConditionTypeMoreEq
+				case ">":
+					l.ConditionOperation = ConditionTypeMore
+				default:
+					return errors.New("wrong condition")
+				}
+				l.ConditionVal2 = l.Lexems[3]
 			case "while":
 				l.Instruction = InstructionWhile
 				if len(l.Lexems) != 5 {
 					return errors.New("wrong while")
 				}
-				l.Condition = l.Lexems[1 : len(l.Lexems)-1]
+				l.ConditionVal1 = l.Lexems[1]
+				switch l.Lexems[2] {
+				case "<":
+					l.ConditionOperation = ConditionTypeLess
+				case "<=":
+					l.ConditionOperation = ConditionTypeLessEq
+				case "==":
+					l.ConditionOperation = ConditionTypeEq
+				case ">=":
+					l.ConditionOperation = ConditionTypeMoreEq
+				case ">":
+					l.ConditionOperation = ConditionTypeMore
+				default:
+					return errors.New("wrong condition")
+				}
+				l.ConditionVal2 = l.Lexems[3]
 			case "break":
 				l.Instruction = InstructionBreak
 			case "}":
@@ -131,6 +163,17 @@ func (c *Program) Compile(code string) error {
 			c.lines[i].RightPartIsFunction = c.isFunction(c.lines[i].RightPart[0])
 		}
 	}
+	for _, line := range c.lines {
+		for _, lex := range line.Lexems {
+			v, err := parseConstrant1(lex)
+			if err != nil {
+				return err
+			}
+			if v != nil {
+				c.constants[lex] = v
+			}
+		}
+	}
 	return nil
 }
 
@@ -172,14 +215,7 @@ func (c *Program) run() (err error) {
 }
 
 func (c *Program) ExecLine() (err error) {
-	//time.Sleep(10 * time.Millisecond)
-	if len(c.lines[c.currentLine].Lexems) < 1 {
-		c.currentLine++
-		return
-	}
-	instruction := c.lines[c.currentLine].Instruction
-	c.debug("ExecLine", c.currentLine+1, c.lines[c.currentLine].Lexems)
-	switch instruction {
+	switch c.lines[c.currentLine].Instruction {
 	case InstructionSet:
 		err = c.fnSet()
 	case InstructionReturn:
@@ -202,15 +238,9 @@ func (c *Program) ExecLine() (err error) {
 
 func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err error) {
 	functionName := funcCallBody[0]
-	_, internalExists := c.functions[functionName]
-	_, externalExists := c.parentFunctions[functionName]
-	if !internalExists && !externalExists {
-		err = errors.New("unknown function " + functionName)
-		return
-	}
 
-	if internalExists {
-		functionLineIndex := c.functions[functionName]
+	if functionLineIndex, internalExists := c.functions[functionName]; internalExists {
+		//functionLineIndex := c.functions[functionName]
 		ls := c.lines[functionLineIndex].Lexems
 		functionLineParameters := ls[2 : len(ls)-1]
 		parameters, err := c.parseParameters(funcCallBody[1:])
@@ -228,30 +258,32 @@ func (c *Program) fnCall(resultPlaces []string, funcCallBody []string) (err erro
 		c.stack = append(c.stack, c.context)
 		c.context = ctx
 		c.currentLine = functionLineIndex + 1
-		block := NewBlock(BlockTypeFn, -1, "internal:"+functionName)
+		block := NewBlock(BlockTypeFn, -1)
 		ctx.resultPlaces = resultPlaces
 		c.context.stackIfWhile = append(c.context.stackIfWhile, block)
-	} else {
-		if externalExists {
-			parameters, err := c.parseParameters(funcCallBody[1:])
-			if err != nil {
-				return err
-			}
-			extFunctinon := c.parentFunctions[functionName]
-			var resultValues []interface{}
-			resultValues, err = extFunctinon(parameters...)
-			if err != nil {
-				return err
-			}
-			// Put results into local variables
-			for i := range resultPlaces {
-				if i < len(resultValues) {
-					c.set(resultPlaces[i], resultValues[i])
-				}
-			}
-			c.currentLine++
-		}
+		return nil
 	}
+
+	if extFunction, externalExists := c.parentFunctions[functionName]; externalExists {
+		parameters, err := c.parseParameters(funcCallBody[1:])
+		if err != nil {
+			return err
+		}
+		var resultValues []interface{}
+		resultValues, err = extFunction(parameters...)
+		if err != nil {
+			return err
+		}
+		// Put results into local variables
+		for i := range resultPlaces {
+			if i < len(resultValues) {
+				c.set(resultPlaces[i], resultValues[i])
+			}
+		}
+		c.currentLine++
+		return nil
+	}
+	err = errors.New("unknown function " + functionName)
 	return
 }
 
@@ -327,12 +359,13 @@ func (c *Program) fnFn() error {
 
 func (c *Program) fnIf() error {
 	line := c.lines[c.currentLine].Lexems[1:]
-	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock(BlockTypeIf, c.currentLine+1, fmt.Sprint(line)))
+	c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock(BlockTypeIf, c.currentLine+1))
 	// if a > b {
 	if line[len(line)-1] == "{" {
 		line = line[:len(line)-1]
 	}
-	cond, err := c.context.calcCondition(line)
+	l := c.lines[c.currentLine]
+	cond, err := c.context.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation, c.constants)
 	if err != nil {
 		panic(err)
 	}
@@ -356,10 +389,11 @@ func (c *Program) fnWhile() error {
 	}
 
 	if firstExecution {
-		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock(BlockTypeWhile, c.currentLine, ""))
+		c.context.stackIfWhile = append(c.context.stackIfWhile, NewBlock(BlockTypeWhile, c.currentLine))
 	}
 
-	cond, err := c.context.calcCondition(c.lines[c.currentLine].Condition)
+	l := c.lines[c.currentLine]
+	cond, err := c.context.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation, c.constants)
 	if err != nil {
 		return err
 	}
@@ -444,17 +478,52 @@ func (c *Program) fnSet() (err error) {
 	if len(line.LeftPart) == 1 {
 		if !line.RightPartIsFunction {
 			if len(line.RightPart) == 3 {
-				parameters := make([]string, 3)
-				parameters[0] = line.RightPartOperationFn
-				parameters[1] = line.RightPart[0]
-				parameters[2] = line.RightPart[2]
-				if len(parameters[0]) > 0 {
-					err = c.fnCall(line.LeftPart, parameters)
-					return
-				} else {
-					err = errors.New("wrong operation")
-					return
+				var result interface{}
+				var val1 interface{}
+				var val2 interface{}
+				val1, err = c.get(line.RightPart[0])
+				if err != nil {
+					return err
 				}
+				val2, err = c.get(line.RightPart[2])
+				if err != nil {
+					return err
+				}
+				if val1i64, val1i64ok := val1.(int64); val1i64ok {
+					if val2i64, val2i64ok := val2.(int64); val2i64ok {
+						switch line.RightPart[1] {
+						case "+":
+							result = val1i64 + val2i64
+						case "-":
+							result = val1i64 - val2i64
+						case "*":
+							result = val1i64 * val2i64
+						case "/":
+							result = val1i64 / val2i64
+						default:
+							return errors.New("wrong operation")
+						}
+					}
+				}
+				if val1f64, val1f64ok := val1.(float64); val1f64ok {
+					if val2f64, val2f64ok := val2.(float64); val2f64ok {
+						switch line.RightPart[1] {
+						case "+":
+							result = val1f64 + val2f64
+						case "-":
+							result = val1f64 - val2f64
+						case "*":
+							result = val1f64 * val2f64
+						case "/":
+							result = val1f64 / val2f64
+						default:
+							return errors.New("wrong operation")
+						}
+					}
+				}
+				c.set(line.LeftPart[0], result)
+				c.currentLine++
+				return
 			}
 
 			if len(line.RightPart) == 1 {
@@ -478,5 +547,5 @@ func (c *Program) set(name string, value interface{}) {
 }
 
 func (c *Program) get(name string) (interface{}, error) {
-	return c.context.get(name)
+	return c.context.get(name, c.constants)
 }

@@ -13,6 +13,14 @@ type Context struct {
 	lastCallResult []interface{}
 }
 
+type ConditionType int
+
+const ConditionTypeLess = ConditionType(0)
+const ConditionTypeLessEq = ConditionType(1)
+const ConditionTypeEq = ConditionType(2)
+const ConditionTypeMoreEq = ConditionType(3)
+const ConditionTypeMore = ConditionType(4)
+
 func NewContext(returnToLine int) *Context {
 	var c Context
 	c.returnToLine = returnToLine
@@ -20,16 +28,9 @@ func NewContext(returnToLine int) *Context {
 	return &c
 }
 
-func (c *Context) get(name string) (interface{}, error) {
-	if len(name) == 0 {
-		return nil, errors.New("empty lexem")
-	}
-	constValue, err := parseConstrant(name)
-	if err != nil {
-		return nil, err
-	}
-	if constValue != nil {
-		return constValue, nil
+func (c *Context) get(name string, constants map[string]interface{}) (interface{}, error) {
+	if cVal, ok := constants[name]; ok {
+		return cVal, nil
 	}
 	return c.vars[name], nil
 }
@@ -38,20 +39,12 @@ func (c *Context) set(name string, value interface{}) {
 	c.vars[name] = value
 }
 
-func (c *Context) calcCondition(cond []string) (result bool, err error) {
-	if len(cond) != 3 {
-		err = errors.New("wrong condition length")
-		return
-	}
-
-	p1 := cond[0]
-	op := cond[1]
-	p2 := cond[2]
-	pv1, err := c.get(p1)
+func (c *Context) calcCondition(v1 string, v2 string, op ConditionType, constants map[string]interface{}) (result bool, err error) {
+	pv1, err := c.get(v1, constants)
 	if err != nil {
 		return false, err
 	}
-	pv2, err := c.get(p2)
+	pv2, err := c.get(v2, constants)
 	if err != nil {
 		return false, err
 	}
@@ -61,19 +54,19 @@ func (c *Context) calcCondition(cond []string) (result bool, err error) {
 	pv2int, pv2int_ok := pv2.(int64)
 	if pv1int_ok && pv2int_ok {
 		switch op {
-		case "<":
+		case ConditionTypeLess:
 			result = pv1int < pv2int
 			return
-		case "<=":
+		case ConditionTypeLessEq:
 			result = pv1int <= pv2int
 			return
-		case "==":
+		case ConditionTypeEq:
 			result = pv1int == pv2int
 			return
-		case ">=":
+		case ConditionTypeMoreEq:
 			result = pv1int >= pv2int
 			return
-		case ">":
+		case ConditionTypeMore:
 			result = pv1int > pv2int
 			return
 		}
@@ -84,19 +77,19 @@ func (c *Context) calcCondition(cond []string) (result bool, err error) {
 	pv2double, pv2double_ok := pv2.(float64)
 	if pv1double_ok && pv2double_ok {
 		switch op {
-		case "<":
+		case ConditionTypeLess:
 			result = pv1double < pv2double
 			return
-		case "<=":
+		case ConditionTypeLessEq:
 			result = pv1double <= pv2double
 			return
-		case "==":
+		case ConditionTypeEq:
 			result = pv1double == pv2double
 			return
-		case ">=":
+		case ConditionTypeMoreEq:
 			result = pv1double >= pv2double
 			return
-		case ">":
+		case ConditionTypeMore:
 			result = pv1double > pv2double
 			return
 		}

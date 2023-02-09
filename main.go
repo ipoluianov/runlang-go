@@ -19,9 +19,9 @@ func main() {
 	fmt.Println("-----------begin")
 	dt3 := time.Now()
 	res, err := p.RunFn("init", 5, "qwe")
-	fmt.Println("Result:", res)
 	dt4 := time.Now()
 	fmt.Println("-----------end", dt4.Sub(dt3).Milliseconds())
+	fmt.Println("Result:", res)
 
 	// 9
 	// 3809

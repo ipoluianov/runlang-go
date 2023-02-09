@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func parseConstrant(value string) (interface{}, error) {
+func parseConstrant1(value string) (interface{}, error) {
 	if value[0] == '-' || (value[0] >= '0' && value[0] <= '9') {
 		if strings.Contains(value, ".") {
 			dVal, err := strconv.ParseFloat(value, 64)

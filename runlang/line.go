@@ -19,7 +19,9 @@ type Line struct {
 	Instruction
 
 	// If & While
-	Condition []string
+	ConditionVal1      string
+	ConditionOperation ConditionType
+	ConditionVal2      string
 
 	// Set
 	LeftPart             []string

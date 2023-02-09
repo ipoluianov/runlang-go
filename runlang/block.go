@@ -10,14 +10,12 @@ const (
 
 type Block struct {
 	tp         BlockType
-	comment    string
 	beginIndex int
 }
 
-func NewBlock(tp BlockType, beginIndex int, comment string) *Block {
+func NewBlock(tp BlockType, beginIndex int) *Block {
 	var c Block
 	c.tp = tp
-	c.comment = comment
 	c.beginIndex = beginIndex
 	return &c
 }
