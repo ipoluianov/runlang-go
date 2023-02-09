@@ -18,10 +18,6 @@ func main() {
 
 	fmt.Println("-----------begin")
 	dt3 := time.Now()
-	p.AddFunction("draw", func(args ...interface{}) ([]interface{}, error) {
-		fmt.Println("DRAW", args)
-		return nil, nil
-	})
 	res, err := p.RunFn("init", 5, "qwe")
 	fmt.Println("Result:", res)
 	dt4 := time.Now()
