@@ -1,6 +1,6 @@
 fn init(p0, p1) {
     i = 0
-    while (i < 1000000) {
+    while (i < 10000000) {
         i = i + 1
     }
 }

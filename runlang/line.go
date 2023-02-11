@@ -24,8 +24,9 @@ type Line struct {
 	ConditionVal2      string
 
 	// Set
-	LeftPart             []string
-	RightPart            []string
-	RightPartIsFunction  bool
-	RightPartOperationFn string
+	LeftPart            []string
+	RightPart           []string
+	RightPartIsFunction bool
+	SetIsMath           bool
+	SetIsOne            bool
 }

@@ -28,11 +28,6 @@ func NewProgram() *Program {
 	c.functions = make(map[string]int)
 	c.constants = make(map[string]interface{})
 	c.parentFunctions = make(map[string]UniFunc)
-	c.parentFunctions["run.add"] = lib.Add
-	c.parentFunctions["run.sub"] = lib.Sub
-	c.parentFunctions["run.mul"] = lib.Mul
-	c.parentFunctions["run.div"] = lib.Div
-
 	c.parentFunctions["run.print"] = lib.Print
 
 	c.parentFunctions["run.string"] = lib.TypeString
@@ -141,19 +136,6 @@ func (c *Program) Compile(code string) error {
 				if len(l.RightPart) == 0 {
 					return errors.New("no right part on operation")
 				}
-
-				if len(l.RightPart) == 3 {
-					switch l.RightPart[1] {
-					case "+":
-						l.RightPartOperationFn = "run.add"
-					case "-":
-						l.RightPartOperationFn = "run.sun"
-					case "*":
-						l.RightPartOperationFn = "run.mul"
-					case "/":
-						l.RightPartOperationFn = "run.div"
-					}
-				}
 			}
 		}
 	}
@@ -173,6 +155,23 @@ func (c *Program) Compile(code string) error {
 				c.constants[lex] = v
 			}
 		}
+
+		if len(line.LeftPart) == 1 {
+			if !line.RightPartIsFunction {
+				if len(line.RightPart) == 3 {
+					line.SetIsMath = true
+				}
+			}
+		}
+
+		if len(line.LeftPart) == 1 {
+			if !line.RightPartIsFunction {
+				if len(line.RightPart) == 1 {
+					line.SetIsOne = true
+				}
+			}
+		}
+
 	}
 	return nil
 }
@@ -365,7 +364,7 @@ func (c *Program) fnIf() error {
 		line = line[:len(line)-1]
 	}
 	l := c.lines[c.currentLine]
-	cond, err := c.context.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation, c.constants)
+	cond, err := c.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation)
 	if err != nil {
 		panic(err)
 	}
@@ -393,7 +392,7 @@ func (c *Program) fnWhile() error {
 	}
 
 	l := c.lines[c.currentLine]
-	cond, err := c.context.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation, c.constants)
+	cond, err := c.calcCondition(l.ConditionVal1, l.ConditionVal2, l.ConditionOperation)
 	if err != nil {
 		return err
 	}
@@ -475,67 +474,63 @@ func (c *Program) isFunction(name string) bool {
 
 func (c *Program) fnSet() (err error) {
 	line := c.lines[c.currentLine]
-	if len(line.LeftPart) == 1 {
-		if !line.RightPartIsFunction {
-			if len(line.RightPart) == 3 {
-				var result interface{}
-				var val1 interface{}
-				var val2 interface{}
-				val1, err = c.get(line.RightPart[0])
-				if err != nil {
-					return err
+	if line.SetIsMath {
+		var result interface{}
+		var val1 interface{}
+		var val2 interface{}
+		val1, err = c.get(line.RightPart[0])
+		if err != nil {
+			return err
+		}
+		val2, err = c.get(line.RightPart[2])
+		if err != nil {
+			return err
+		}
+		if val1i64, val1i64ok := val1.(int64); val1i64ok {
+			if val2i64, val2i64ok := val2.(int64); val2i64ok {
+				switch line.RightPart[1] {
+				case "+":
+					result = val1i64 + val2i64
+				case "-":
+					result = val1i64 - val2i64
+				case "*":
+					result = val1i64 * val2i64
+				case "/":
+					result = val1i64 / val2i64
+				default:
+					return errors.New("wrong operation")
 				}
-				val2, err = c.get(line.RightPart[2])
-				if err != nil {
-					return err
-				}
-				if val1i64, val1i64ok := val1.(int64); val1i64ok {
-					if val2i64, val2i64ok := val2.(int64); val2i64ok {
-						switch line.RightPart[1] {
-						case "+":
-							result = val1i64 + val2i64
-						case "-":
-							result = val1i64 - val2i64
-						case "*":
-							result = val1i64 * val2i64
-						case "/":
-							result = val1i64 / val2i64
-						default:
-							return errors.New("wrong operation")
-						}
-					}
-				}
-				if val1f64, val1f64ok := val1.(float64); val1f64ok {
-					if val2f64, val2f64ok := val2.(float64); val2f64ok {
-						switch line.RightPart[1] {
-						case "+":
-							result = val1f64 + val2f64
-						case "-":
-							result = val1f64 - val2f64
-						case "*":
-							result = val1f64 * val2f64
-						case "/":
-							result = val1f64 / val2f64
-						default:
-							return errors.New("wrong operation")
-						}
-					}
-				}
-				c.set(line.LeftPart[0], result)
-				c.currentLine++
-				return
-			}
-
-			if len(line.RightPart) == 1 {
-				v, err := c.get(line.RightPart[0])
-				if err != nil {
-					return err
-				}
-				c.set(line.LeftPart[0], v)
-				c.currentLine++
-				return nil
 			}
 		}
+		if val1f64, val1f64ok := val1.(float64); val1f64ok {
+			if val2f64, val2f64ok := val2.(float64); val2f64ok {
+				switch line.RightPart[1] {
+				case "+":
+					result = val1f64 + val2f64
+				case "-":
+					result = val1f64 - val2f64
+				case "*":
+					result = val1f64 * val2f64
+				case "/":
+					result = val1f64 / val2f64
+				default:
+					return errors.New("wrong operation")
+				}
+			}
+		}
+		c.set(line.LeftPart[0], result)
+		c.currentLine++
+		return
+	}
+
+	if line.SetIsOne {
+		v, err := c.get(line.RightPart[0])
+		if err != nil {
+			return err
+		}
+		c.set(line.LeftPart[0], v)
+		c.currentLine++
+		return nil
 	}
 
 	err = c.fnCall(line.LeftPart, line.RightPart)
@@ -543,9 +538,71 @@ func (c *Program) fnSet() (err error) {
 }
 
 func (c *Program) set(name string, value interface{}) {
-	c.context.set(name, value)
+	c.context.vars[name] = value
 }
 
 func (c *Program) get(name string) (interface{}, error) {
-	return c.context.get(name, c.constants)
+	if cVal, ok := c.constants[name]; ok {
+		return cVal, nil
+	}
+	v := c.context.vars[name]
+	return v, nil
+}
+
+func (c *Program) calcCondition(v1 string, v2 string, op ConditionType) (result bool, err error) {
+	var val1 interface{}
+	var val2 interface{}
+
+	val1, err = c.get(v1)
+	if err != nil {
+		return false, err
+	}
+	val2, err = c.get(v2)
+	if err != nil {
+		return false, err
+	}
+	if val1i64, val1i64ok := val1.(int64); val1i64ok {
+		if val2i64, val2i64ok := val2.(int64); val2i64ok {
+			switch op {
+			case ConditionTypeLess:
+				result = val1i64 < val2i64
+				return
+			case ConditionTypeLessEq:
+				result = val1i64 <= val2i64
+				return
+			case ConditionTypeEq:
+				result = val1i64 == val2i64
+				return
+			case ConditionTypeMoreEq:
+				result = val1i64 >= val2i64
+				return
+			case ConditionTypeMore:
+				result = val1i64 > val2i64
+				return
+			}
+		}
+	}
+	if val1f64, val1f64ok := val1.(float64); val1f64ok {
+		if val2f64, val2f64ok := val2.(float64); val2f64ok {
+			switch op {
+			case ConditionTypeLess:
+				result = val1f64 < val2f64
+				return
+			case ConditionTypeLessEq:
+				result = val1f64 <= val2f64
+				return
+			case ConditionTypeEq:
+				result = val1f64 == val2f64
+				return
+			case ConditionTypeMoreEq:
+				result = val1f64 >= val2f64
+				return
+			case ConditionTypeMore:
+				result = val1f64 > val2f64
+				return
+			}
+		}
+	}
+
+	return false, errors.New("wrong condition")
 }
